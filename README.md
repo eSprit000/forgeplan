@@ -16,6 +16,30 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+### Firebase Phone Auth (Expo)
+
+This project uses the Firebase JS SDK for Authentication in the Expo managed workflow. To enable phone-number sign-in with reCAPTCHA, install the Expo helper and follow the steps below.
+
+1. Install the reCAPTCHA helper:
+
+```bash
+expo install expo-firebase-recaptcha
+```
+
+2. Make sure your Firebase config is set in `src/firebase/config.js` (or via env vars).
+
+3. In `src/screens/LoginScreen.js` we use `FirebaseRecaptchaVerifierModal` from `expo-firebase-recaptcha` and the Firebase JS `signInWithPhoneNumber` flow. On web the reCAPTCHA will be shown automatically; on native Expo this modal provides a reCAPTCHA flow.
+
+4. Run the app and test phone auth (use a real device or a simulator with network access):
+
+```bash
+npx expo start
+```
+
+Notes:
+- If you prefer a native implementation, use `@react-native-firebase/auth` with a development or production build.
+- The demo `LoginScreen` and `src/services/authService.js` include example calls to `sendPhoneVerification`, `confirmVerificationCode`, and `ensureUserDoc`.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
