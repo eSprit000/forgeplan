@@ -1,10 +1,11 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
 
 import { COLORS } from '../constants/theme';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { AuthProvider, useAuth } from './AuthProvider';
+import { useAppTheme } from '../i18n/ThemeContext';
 
 // Auth
 import LoginScreen from '../screens/LoginScreen';
@@ -21,12 +22,14 @@ import NutritionProgramScreen from '../screens/coach/NutritionProgramScreen';
 // Athlete
 import AthleteCodeEntryScreen from '../screens/athlete/AthleteCodeEntryScreen';
 import AthleteWorkoutScreen from '../screens/athlete/AthleteWorkoutScreen';
+import PremiumScreen from '../screens/PremiumScreen';
 
 const Stack = createNativeStackNavigator();
 
 /* ─── Root navigator switches based on auth state ─────────── */
 const Navigator = () => {
   const { user, initializing } = useAuth();
+  const { isDark } = useAppTheme();
 
   if (initializing) {
     return (
@@ -36,8 +39,22 @@ const Navigator = () => {
     );
   }
 
+  const baseTheme = isDark ? DarkTheme : DefaultTheme;
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      theme={{
+        ...baseTheme,
+        colors: {
+          ...baseTheme.colors,
+          primary:      COLORS.accent,
+          background:   COLORS.bg,
+          card:         COLORS.surface,
+          text:         COLORS.text,
+          border:       COLORS.border,
+          notification: COLORS.accent,
+        },
+      }}
+    >
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
 
         {/* ── Not logged in ── */}
@@ -59,6 +76,7 @@ const Navigator = () => {
             <Stack.Screen name="CreateProgram" component={CreateProgramScreen} />
             <Stack.Screen name="CreateNutrition" component={NutritionProgramScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Premium" component={PremiumScreen} />
           </Stack.Group>
         )}
 
@@ -72,6 +90,7 @@ const Navigator = () => {
           <Stack.Group>
             <Stack.Screen name="AthleteWorkout" component={AthleteWorkoutScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Premium" component={PremiumScreen} />
           </Stack.Group>
         )}
 

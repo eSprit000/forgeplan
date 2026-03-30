@@ -1,16 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert,
     Animated, Easing,
+  Modal,
+  ScrollView,
     StatusBar,
     StyleSheet,
     Text, TouchableOpacity,
     View,
 } from 'react-native';
 import AnimatedPressable from '../components/AnimatedPressable';
-import { COLORS, FONT, RADIUS, SHADOW, TIMING } from '../constants/theme';
-import { useLanguage } from '../i18n/LanguageContext';
+import { COLORS, FONT, RADIUS, SHADOW } from '../constants/theme';
+import { useAppTheme } from '../i18n/ThemeContext';
+import { LANGUAGES, useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../navigation/AuthProvider';
 
 const ROLES_STATIC = [
@@ -20,9 +23,12 @@ const ROLES_STATIC = [
 
 export default function RoleSelectionScreen() {
   const { setRole, signOut } = useAuth();
-  const { t } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
+  const { isDark } = useAppTheme();
+  const s = useMemo(makeS, [isDark]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading]   = useState(false);
+  const [languageModal, setLanguageModal] = useState(false);
 
   // Entrance animations
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -56,8 +62,16 @@ export default function RoleSelectionScreen() {
   const cardAnims = [card0Anim, card1Anim];
 
   const ROLES = [
-    { ...ROLES_STATIC[0], label: t('roleCoach'),   subtitle: t('roleCoachDesc') },
-    { ...ROLES_STATIC[1], label: t('roleAthlete'), subtitle: t('roleAthleteDesc') },
+    {
+      ...ROLES_STATIC[0],
+      label: t('roleCoach') || 'Koç',
+      subtitle: t('roleCoachDesc') || 'Sporcularına program hazırla ve takip et',
+    },
+    {
+      ...ROLES_STATIC[1],
+      label: t('roleAthlete') || 'Sporcu',
+      subtitle: t('roleAthleteDesc') || 'Koçunun programıyla antrenman yap',
+    },
   ];
 
   const handleConfirm = async () => {
@@ -77,7 +91,52 @@ export default function RoleSelectionScreen() {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
+
+      <View style={s.preAuthTopBar}>
+        <TouchableOpacity style={s.preAuthSettingsBtn} onPress={() => setLanguageModal(true)} activeOpacity={0.8}>
+          <Ionicons name="settings-outline" size={18} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <Modal
+        visible={languageModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLanguageModal(false)}
+      >
+        <View style={s.langOverlay}>
+          <View style={s.langSheet}>
+            <View style={s.langHeader}>
+              <Text style={s.langTitle}>{t('selectLanguage')}</Text>
+              <TouchableOpacity onPress={() => setLanguageModal(false)}>
+                <Ionicons name="close" size={20} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {LANGUAGES.map((item) => {
+                const active = language === item.code;
+                return (
+                  <TouchableOpacity
+                    key={item.code}
+                    style={[s.langRow, active && s.langRowActive]}
+                    onPress={() => {
+                      setLanguage(item.code);
+                      setLanguageModal(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={s.langFlag}>{item.flag}</Text>
+                    <Text style={[s.langLabel, active && s.langLabelActive]}>{item.label}</Text>
+                    {active && <Ionicons name="checkmark" size={18} color={COLORS.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Header */}
       <Animated.View style={[s.header, {
@@ -149,8 +208,67 @@ export default function RoleSelectionScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg, paddingHorizontal: 24 },
+
+  preAuthTopBar: {
+    position: 'absolute',
+    top: 54,
+    right: 24,
+    zIndex: 10,
+  },
+  preAuthSettingsBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.small,
+  },
+
+  langOverlay: {
+    flex: 1,
+    backgroundColor: COLORS.overlay,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  langSheet: {
+    maxHeight: '70%',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    ...SHADOW.medium,
+  },
+  langHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  langTitle: { fontSize: FONT.lg, fontWeight: '700', color: COLORS.text },
+  langRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginBottom: 8,
+  },
+  langRowActive: {
+    backgroundColor: COLORS.accent + '14',
+    borderColor: COLORS.accent + '44',
+  },
+  langFlag: { fontSize: 18 },
+  langLabel: { flex: 1, color: COLORS.text, fontSize: FONT.md },
+  langLabelActive: { color: COLORS.accent, fontWeight: '700' },
 
   header: { alignItems: 'center', paddingTop: 72, paddingBottom: 40 },
   logoWrap: {

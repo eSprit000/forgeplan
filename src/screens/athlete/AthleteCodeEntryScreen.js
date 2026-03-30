@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
     ActivityIndicator, Alert,
     StatusBar,
@@ -8,6 +8,7 @@ import {
     View,
 } from 'react-native';
 import { COLORS, FONT, RADIUS, SHADOW } from '../../constants/theme';
+import { useAppTheme } from '../../i18n/ThemeContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../navigation/AuthProvider';
 import firestoreService from '../../services/firestoreService';
@@ -15,6 +16,8 @@ import firestoreService from '../../services/firestoreService';
 export default function AthleteCodeEntryScreen() {
   const { user, setSporcuLinked, signOut } = useAuth();
   const { t } = useLanguage();
+  const { isDark } = useAppTheme();
+  const s = useMemo(makeS, [isDark]);
   const [kod, setKod]       = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -41,7 +44,7 @@ export default function AthleteCodeEntryScreen() {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* Header */}
       <View style={s.header}>
@@ -95,7 +98,7 @@ export default function AthleteCodeEntryScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root:    { flex: 1, backgroundColor: COLORS.bg, paddingHorizontal: 28 },
 
   header:  { alignItems: 'center', paddingTop: 60, paddingBottom: 16 },

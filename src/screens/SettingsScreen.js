@@ -1,12 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import {
+  deleteUser,
+  sendPasswordResetEmail,
+} from 'firebase/auth';
 import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Switch,
@@ -18,17 +24,22 @@ import {
 import { COLORS, FONT, RADIUS, SHADOW } from '../constants/theme';
 import { LANGUAGES, useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../navigation/AuthProvider';
+import { auth } from '../config/firebaseConfig';
 import firestoreService from '../services/firestoreService';
+import { useAppTheme } from '../i18n/ThemeContext';
 
 /* ─── Küçük bileşenler ─────────────────────────────────────── */
 
 /** Bölüm başlığı */
-const SectionTitle = ({ label }) => (
-  <Text style={st.sectionTitle}>{label}</Text>
-);
+const SectionTitle = ({ label }) => {
+  const st = makeST();
+  return <Text style={st.sectionTitle}>{label}</Text>;
+};
 
 /** Satır: metin + sağ ikon/değer + onPress */
-const SettingsRow = ({ icon, label, value, onPress, danger, topRadius, bottomRadius, hideBorder }) => (
+const SettingsRow = ({ icon, label, value, onPress, danger, topRadius, bottomRadius, hideBorder }) => {
+  const st = makeST();
+  return (
   <TouchableOpacity
     style={[
       st.row,
@@ -50,10 +61,13 @@ const SettingsRow = ({ icon, label, value, onPress, danger, topRadius, bottomRad
       <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} style={{ marginLeft: 4 }} />
     )}
   </TouchableOpacity>
-);
+  );
+};
 
 /** Toggle satırı */
-const ToggleRow = ({ icon, label, value, onValueChange, topRadius, bottomRadius, hideBorder }) => (
+const ToggleRow = ({ icon, label, value, onValueChange, topRadius, bottomRadius, hideBorder }) => {
+  const st = makeST();
+  return (
   <View
     style={[
       st.row,
@@ -75,19 +89,25 @@ const ToggleRow = ({ icon, label, value, onValueChange, topRadius, bottomRadius,
       thumbColor={value ? COLORS.accent : COLORS.textMuted}
     />
   </View>
-);
+  );
+};
 
 /** Grup wrapper */
-const Group = ({ children }) => <View style={st.group}>{children}</View>;
+const Group = ({ children }) => {
+  const st = makeST();
+  return <View style={st.group}>{children}</View>;
+};
 
 /* ─── Profil Düzenleme Modalı ──────────────────────────────── */
 const ProfileEditModal = ({ visible, user, onSave, onClose }) => {
+  const { t } = useLanguage();
+  const mo = makeMO();
   const [isim, setIsim]       = useState(user?.isim ?? '');
   const [soyisim, setSoyisim] = useState(user?.soyisim ?? '');
   const [saving, setSaving]   = useState(false);
 
   const handleSave = async () => {
-    if (!isim.trim()) { Alert.alert('Uyarı', 'İsim boş olamaz.'); return; }
+    if (!isim.trim()) { Alert.alert(t('warning'), t('firstNameRequired')); return; }
     setSaving(true);
     try {
       await onSave({ isim: isim.trim(), soyisim: soyisim.trim() });
@@ -101,21 +121,21 @@ const ProfileEditModal = ({ visible, user, onSave, onClose }) => {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={mo.overlay}>
           <View style={mo.sheet}>
-            <Text style={mo.title}>Profili Düzenle</Text>
-            <Text style={mo.label}>İsim</Text>
+            <Text style={mo.title}>{t('profileTitle')}</Text>
+            <Text style={mo.label}>{t('firstName')}</Text>
             <TextInput
               style={mo.input}
               value={isim}
               onChangeText={setIsim}
-              placeholder="İsim"
+              placeholder={t('firstName')}
               placeholderTextColor={COLORS.textMuted}
             />
-            <Text style={mo.label}>Soyisim</Text>
+            <Text style={mo.label}>{t('lastName')}</Text>
             <TextInput
               style={mo.input}
               value={soyisim}
               onChangeText={setSoyisim}
-              placeholder="Soyisim"
+              placeholder={t('lastName')}
               placeholderTextColor={COLORS.textMuted}
             />
             <TouchableOpacity
@@ -125,10 +145,10 @@ const ProfileEditModal = ({ visible, user, onSave, onClose }) => {
             >
               {saving
                 ? <ActivityIndicator color={COLORS.white} size="small" />
-                : <Text style={mo.saveBtnText}>Kaydet</Text>}
+                : <Text style={mo.saveBtnText}>{t('save')}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={mo.cancelBtn} onPress={onClose}>
-              <Text style={mo.cancelText}>İptal</Text>
+              <Text style={mo.cancelText}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -147,6 +167,8 @@ const HEDEF_OPTIONS = [
 ];
 
 const SporcuBilgiModal = ({ visible, user, onSave, onClose }) => {
+  const { t } = useLanguage();
+  const mo = makeMO();
   const [kilo, setKilo]   = useState(String(user?.kilo ?? ''));
   const [boy, setBoy]     = useState(String(user?.boy ?? ''));
   const [hedef, setHedef] = useState(user?.hedefTuru ?? '');
@@ -166,11 +188,11 @@ const SporcuBilgiModal = ({ visible, user, onSave, onClose }) => {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={mo.overlay}>
           <View style={mo.sheet}>
-            <Text style={mo.title}>Kişisel Bilgiler</Text>
+            <Text style={mo.title}>{t('sectionAthlete')}</Text>
 
             <View style={mo.row2}>
               <View style={{ flex: 1 }}>
-                <Text style={mo.label}>Kilo (kg)</Text>
+                <Text style={mo.label}>{t('weightLabel')}</Text>
                 <TextInput
                   style={mo.input}
                   value={kilo}
@@ -181,7 +203,7 @@ const SporcuBilgiModal = ({ visible, user, onSave, onClose }) => {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={mo.label}>Boy (cm)</Text>
+                <Text style={mo.label}>{t('heightLabel')}</Text>
                 <TextInput
                   style={mo.input}
                   value={boy}
@@ -193,7 +215,7 @@ const SporcuBilgiModal = ({ visible, user, onSave, onClose }) => {
               </View>
             </View>
 
-            <Text style={mo.label}>Hedef Türü</Text>
+            <Text style={mo.label}>{t('goalType')}</Text>
             <View style={mo.hedefGrid}>
               {HEDEF_OPTIONS.map((h) => (
                 <TouchableOpacity
@@ -220,10 +242,10 @@ const SporcuBilgiModal = ({ visible, user, onSave, onClose }) => {
             >
               {saving
                 ? <ActivityIndicator color={COLORS.white} size="small" />
-                : <Text style={mo.saveBtnText}>Kaydet</Text>}
+                : <Text style={mo.saveBtnText}>{t('save')}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={mo.cancelBtn} onPress={onClose}>
-              <Text style={mo.cancelText}>İptal</Text>
+              <Text style={mo.cancelText}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -236,6 +258,8 @@ const SporcuBilgiModal = ({ visible, user, onSave, onClose }) => {
 const UZMANLIK_OPTIONS = ['Powerlifting', 'Strongman', 'Bodybuilding'];
 
 const KocProfilModal = ({ visible, user, onSave, onClose }) => {
+  const { t } = useLanguage();
+  const mo = makeMO();
   const [uzmanlik, setUzmanlik] = useState(user?.uzmanlik ?? '');
   const [biyografi, setBiyografi] = useState(user?.biyografi ?? '');
   const [saving, setSaving]     = useState(false);
@@ -254,9 +278,9 @@ const KocProfilModal = ({ visible, user, onSave, onClose }) => {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={mo.overlay}>
           <View style={mo.sheet}>
-            <Text style={mo.title}>Koç Profili</Text>
+            <Text style={mo.title}>{t('sectionCoachProfile')}</Text>
 
-            <Text style={mo.label}>Uzmanlık Alanı</Text>
+            <Text style={mo.label}>{t('expertise')}</Text>
             <View style={mo.hedefGrid}>
               {UZMANLIK_OPTIONS.map((u) => (
                 <TouchableOpacity
@@ -269,12 +293,12 @@ const KocProfilModal = ({ visible, user, onSave, onClose }) => {
               ))}
             </View>
 
-            <Text style={mo.label}>Biyografi</Text>
+            <Text style={mo.label}>{t('bio')}</Text>
             <TextInput
               style={[mo.input, { height: 88, textAlignVertical: 'top', paddingTop: 10 }]}
               value={biyografi}
               onChangeText={setBiyografi}
-              placeholder="10 yıllık powerlifting koçu..."
+              placeholder={t('bioPlaceholder')}
               placeholderTextColor={COLORS.textMuted}
               multiline
             />
@@ -286,10 +310,10 @@ const KocProfilModal = ({ visible, user, onSave, onClose }) => {
             >
               {saving
                 ? <ActivityIndicator color={COLORS.white} size="small" />
-                : <Text style={mo.saveBtnText}>Kaydet</Text>}
+                : <Text style={mo.saveBtnText}>{t('save')}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={mo.cancelBtn} onPress={onClose}>
-              <Text style={mo.cancelText}>İptal</Text>
+              <Text style={mo.cancelText}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -302,6 +326,9 @@ const KocProfilModal = ({ visible, user, onSave, onClose }) => {
 export default function SettingsScreen({ navigation }) {
   const { user, signOut, updateUser } = useAuth();
   const { language, t, setLanguage }   = useLanguage();
+  const { isDark, toggleTheme }        = useAppTheme();
+  const s  = makeS();
+  const st = makeST();
   const isKoc = user?.rol === 'koc';
 
   /* Modals */
@@ -323,9 +350,131 @@ export default function SettingsScreen({ navigation }) {
 
   const currentLangLabel = LANGUAGES.find((l) => l.code === language)?.label ?? 'Türkçe';
 
-  const komingSoon = (ozellik) =>
-    Alert.alert(t('comingSoon'), `${ozellik} ${t('comingSoonDesc').replace('{feature}', '')}`);
+  /* ── Şifre Değiştir ── */
+  const handleChangePassword = async () => {
+    if (!user?.email) {
+      Alert.alert('Uyarı', 'Hesabınıza bağlı bir e-posta adresi bulunamadı.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      Alert.alert(
+        '\u2709\ufe0f E-posta G\u00f6nderildi',
+        `${user.email} adresine şifre sıfırlama linki gönderildi.\n\n\ud83d\udccc Gelmediyse spam / önemsiz klasörünü kontrol et.`,
+        [{ text: 'Tamam' }]
+      );
+    } catch (e) {
+      Alert.alert('Hata', e.message);
+    }
+  };
 
+  /* ── Veri Dışa Aktar ── */
+  const handleExportData = async () => {
+    const lines = [
+      '== ForcePlan Hesap Bilgileri ==',
+      `İsim: ${user?.isim ?? '—'} ${user?.soyisim ?? ''}`,
+      `E-posta: ${user?.email ?? '—'}`,
+      `Rol: ${user?.rol === 'koc' ? 'Koç' : 'Sporcu'}`,
+      user?.kilo ? `Kilo: ${user.kilo} kg` : null,
+      user?.boy  ? `Boy: ${user.boy} cm`   : null,
+      user?.hedefTuru ? `Hedef: ${user.hedefTuru}` : null,
+      user?.uzmanlik  ? `Uzmanlık: ${user.uzmanlik}` : null,
+    ].filter(Boolean).join('\n');
+    await Share.share({ message: lines, title: 'ForcePlan Verilerim' });
+  };
+
+  /* ── Hesabı Sil ── */
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      t('deleteAccount'),
+      t('deleteAccountWarn'),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await firestoreService.kullaniciVerileriniSil(user.uid, user.sporcuId ?? null);
+              await deleteUser(auth.currentUser);
+              signOut();
+            } catch (e) {
+              if (e.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  t('reloginRequiredTitle'),
+                  t('reloginRequiredDesc'),
+                  [{ text: t('done') }]
+                );
+              } else {
+                Alert.alert(t('error'), e.message);
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* ── İletişim ── */
+  const handleContact = () => {
+    Linking.openURL('mailto:destek@forceplan.app?subject=ForcePlan%20Destek').catch(() =>
+      Alert.alert('İletişim', 'destek@forceplan.app adresine e-posta gönderebilirsin.')
+    );
+  };
+
+  /* ── Gizlilik Politikası ── */
+  const handlePrivacy = () => {
+    Alert.alert(
+      'Gizlilik Politikası',
+      'ForcePlan, kişisel verilerini yalnızca uygulama içi antrenman ve beslenme programı amacıyla kullanır. Veriler üçüncü taraflarla paylaşılmaz. Hesabını sildiğinde tüm veriler kalıcı olarak kaldırılır.\n\nSorular için: destek@forceplan.app',
+      [{ text: 'Anladım', style: 'default' }]
+    );
+  };
+
+  /* ── Yardım Merkezi ── */
+  const handleHelp = () => {
+    Alert.alert(
+      'Yardım & Geri Bildirim',
+      '\ud83d\udddd Sporcu kodu nerede?\nKoç ekranında sporcuna tıkla, kod görünür.\n\n\ud83c\udfc3 Program nasıl tamamlanır?\nSporcu ekranında güne tıkla \u2192 Günü Tamamla.\n\n\ud83e\udd55 Beslenme programı nasıl eklenir?\nYeni sporcu eklerken Beslenme Programını seç.',
+      [
+        { text: 'Kapat', style: 'cancel' },
+        {
+          text: '\ud83d\udce7 Bildirim Gönder',
+          onPress: () =>
+            Linking.openURL(
+              'mailto:cetinkaya.cagdas123@gmail.com?subject=ForgePlan%20Geri%20Bildirim'
+            ).catch(() =>
+              Alert.alert('Hata', 'E-posta uygulaması açılamadı. cetinkaya.cagdas123@gmail.com adresine yazın.')
+            ),
+        },
+      ]
+    );
+  };
+
+  /* ── Koçtan Ayrıl ── */
+  const handleKoctanAyril = () => {
+    if (!user?.kocId) return;
+    Alert.alert(
+      'Koçtan Ayrıl',
+      'Koçunuzla olan bağlantınız koparılacak. Antrenman programınıza erişim kaybedeceksiniz. Emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Ayrıl',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await firestoreService.koctanAyril(user.uid, user.sporcuId ?? null);
+              updateUser({ kocId: null, sporcuId: null });
+              Alert.alert('Tamam', 'Koçunuzdan başarıyla ayrıldınız.');
+            } catch (e) {
+              Alert.alert('Hata', e.message);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   /* ── Kaydetme fonksiyonları ── */
   const handleProfileSave = async (data) => {
@@ -360,28 +509,14 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      t('deleteAccount'),
-      t('deleteAccountWarn'),
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('delete'),
-          style: 'destructive',
-          onPress: () => komingSoon(t('deleteAccount')),
-        },
-      ]
-    );
-  };
 
-  const fullName = [user?.isim, user?.soyisim].filter(Boolean).join(' ') || 'Kullanıcı';
+  const fullName = [user?.isim, user?.soyisim].filter(Boolean).join(' ') || t('userFallback');
   const hedefLabel = user?.hedefTuru ? user.hedefTuru : t('notSelected');
   const uzmanlikLabel = user?.uzmanlik ? user.uzmanlik : t('notSelected');
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* ── Header ── */}
       <View style={s.header}>
@@ -405,9 +540,9 @@ export default function SettingsScreen({ navigation }) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.profileName}>{fullName}</Text>
-            <Text style={s.profileEmail}>{user?.email ?? ''}</Text>
+            <Text style={s.profileEmail}>{user?.email ?? user?.phoneNumber ?? ''}</Text>
             <View style={s.roleBadge}>
-              <Text style={s.roleBadgeText}>{isKoc ? '🏋️ Koç' : '💪 Sporcu'}</Text>
+              <Text style={s.roleBadgeText}>{isKoc ? `🏋️ ${t('roleCoach')}` : `💪 ${t('roleAthlete')}`}</Text>
             </View>
           </View>
           <TouchableOpacity
@@ -437,7 +572,7 @@ export default function SettingsScreen({ navigation }) {
           <SettingsRow
             icon="lock-closed-outline"
             label={t('changePassword')}
-            onPress={() => komingSoon(t('changePassword'))}
+            onPress={handleChangePassword}
             bottomRadius
             hideBorder
           />
@@ -469,6 +604,24 @@ export default function SettingsScreen({ navigation }) {
           />
         </Group>
 
+        {/* ── Premium ── */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Premium')}
+          activeOpacity={0.85}
+          style={s.premiumBanner}
+        >
+          <View style={s.premiumBannerLeft}>
+            <View style={s.premiumBannerIcon}>
+              <Ionicons name="diamond-outline" size={20} color={COLORS.accent} />
+            </View>
+            <View>
+              <Text style={s.premiumBannerTitle}>Premium'a Geç</Text>
+              <Text style={s.premiumBannerSub}>Sınırsız program, PR takibi ve daha fazlası</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.accent} />
+        </TouchableOpacity>
+
         {/* ── Uygulama Ayarları ── */}
         <SectionTitle label={t('sectionApp')} />
         <Group>
@@ -482,8 +635,18 @@ export default function SettingsScreen({ navigation }) {
           <SettingsRow
             icon="moon-outline"
             label={t('theme')}
-            value={t('themeDark')}
-            onPress={() => komingSoon(t('theme'))}
+            value={isDark ? `🌑 ${t('themeDark')}` : `☀️ ${t('themeLight')}`}
+            onPress={() =>
+              Alert.alert(
+                t('themeSelectTitle'),
+                t('themeSelectDesc'),
+                [
+                  { text: `🌑 ${t('themeDark')}`, onPress: () => toggleTheme(true) },
+                  { text: `☀️ ${t('themeLight')}`, onPress: () => toggleTheme(false) },
+                  { text: t('cancel'), style: 'cancel' },
+                ]
+              )
+            }
           />
           <SettingsRow
             icon="scale-outline"
@@ -536,9 +699,19 @@ export default function SettingsScreen({ navigation }) {
                 label={t('linkedCoach')}
                 value={user?.kocId ? t('linked') : t('notLinked')}
                 topRadius
-                bottomRadius
-                hideBorder
+                hideBorder={!user?.kocId}
+                bottomRadius={!user?.kocId}
               />
+              {user?.kocId && (
+                <SettingsRow
+                  icon="person-remove-outline"
+                  label={t('leaveCoach')}
+                  onPress={handleKoctanAyril}
+                  danger
+                  bottomRadius
+                  hideBorder
+                />
+              )}
             </Group>
           </>
         )}
@@ -600,13 +773,13 @@ export default function SettingsScreen({ navigation }) {
           <SettingsRow
             icon="eye-off-outline"
             label={t('privacyPolicy')}
-            onPress={() => komingSoon(t('privacyPolicy'))}
+            onPress={handlePrivacy}
             topRadius
           />
           <SettingsRow
             icon="download-outline"
             label={t('exportData')}
-            onPress={() => komingSoon(t('exportData'))}
+            onPress={handleExportData}
           />
           <SettingsRow
             icon="trash-outline"
@@ -624,13 +797,13 @@ export default function SettingsScreen({ navigation }) {
           <SettingsRow
             icon="chatbox-outline"
             label={t('contact')}
-            onPress={() => komingSoon(t('contact'))}
+            onPress={handleContact}
             topRadius
           />
           <SettingsRow
             icon="help-circle-outline"
             label={t('helpCenter')}
-            onPress={() => komingSoon(t('helpCenter'))}
+            onPress={handleHelp}
             bottomRadius
             hideBorder
           />
@@ -711,7 +884,7 @@ export default function SettingsScreen({ navigation }) {
 }
 
 /* ── StyleSheet ─────────────────────────────────────────────── */
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root:   { flex: 1, backgroundColor: COLORS.bg },
   scroll: { paddingHorizontal: 16, paddingBottom: 60 },
 
@@ -747,13 +920,32 @@ const s = StyleSheet.create({
   roleBadgeText: { fontSize: 10, color: COLORS.accent, fontWeight: '700' },
   editProfileBtn:{ padding: 8 },
 
+  /* Premium banner */
+  premiumBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.accent + '12',
+    borderRadius: RADIUS.lg, borderWidth: 1.5, borderColor: COLORS.accent + '55',
+    paddingHorizontal: 16, paddingVertical: 14,
+    marginTop: 20, marginBottom: 6,
+    ...SHADOW.accentGlow,
+  },
+  premiumBannerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  premiumBannerIcon:  {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: COLORS.accent + '22',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: COLORS.accent + '44',
+  },
+  premiumBannerTitle: { fontSize: FONT.md, fontWeight: '800', color: COLORS.accent },
+  premiumBannerSub:   { fontSize: FONT.xs, color: COLORS.textSecondary, marginTop: 1 },
+
   version: {
     textAlign: 'center', fontSize: FONT.xs, color: COLORS.textMuted,
     marginTop: 28, marginBottom: 12,
   },
 });
 
-const st = StyleSheet.create({
+const makeST = () => StyleSheet.create({
   sectionTitle: {
     fontSize: FONT.xs, fontWeight: '700', color: COLORS.textMuted,
     letterSpacing: 0.8, marginTop: 22, marginBottom: 6, marginLeft: 4,
@@ -804,7 +996,7 @@ const st = StyleSheet.create({
 });
 
 /* ── Modal styles ───────────────────────────────────────────── */
-const mo = StyleSheet.create({
+const makeMO = () => StyleSheet.create({
   overlay: {
     flex: 1, backgroundColor: COLORS.overlay,
     justifyContent: 'flex-end',

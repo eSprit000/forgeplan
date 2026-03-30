@@ -1,4 +1,4 @@
-export const COLORS = {
+export const COLORS_DARK = {
   bg: '#0D1117',
   surface: '#161B22',
   elevated: '#21262D',
@@ -17,6 +17,35 @@ export const COLORS = {
   black: '#000000',
   overlay: 'rgba(0,0,0,0.6)',
 };
+
+export const COLORS_LIGHT = {
+  bg: '#F2F2F7',
+  surface: '#FFFFFF',
+  elevated: '#F0F0F5',
+  border: '#C6C6CC',
+  accent: '#FF6B35',
+  accentLight: '#FF8C5A',
+  accentDark: '#D4521A',
+  text: '#1C1C1E',
+  textSecondary: '#636366',
+  textMuted: '#AEAEB2',
+  success: '#34C759',
+  successBg: '#D4EDDA',
+  warning: '#FF9500',
+  error: '#FF3B30',
+  white: '#FFFFFF',
+  black: '#000000',
+  overlay: 'rgba(0,0,0,0.4)',
+};
+
+/** Uygulama genelinde kullanılan aktif renkler (başlangıçta karanlık) */
+export const COLORS = { ...COLORS_DARK };
+
+/** Temayı uygular — COLORS nesnesini yerinde günceller */
+export function applyTheme(isDark) {
+  const src = isDark ? COLORS_DARK : COLORS_LIGHT;
+  Object.keys(src).forEach((k) => { COLORS[k] = src[k]; });
+}
 
 export const FONT = {
   xs: 11,

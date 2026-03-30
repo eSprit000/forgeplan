@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
     ActivityIndicator, Alert,
     KeyboardAvoidingView, Platform, ScrollView,
@@ -9,6 +9,7 @@ import {
     View,
 } from 'react-native';
 import { COLORS, FONT, RADIUS, SHADOW } from '../../constants/theme';
+import { useAppTheme } from '../../i18n/ThemeContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../navigation/AuthProvider';
 import firestoreService from '../../services/firestoreService';
@@ -16,6 +17,8 @@ import firestoreService from '../../services/firestoreService';
 export default function AddAthleteScreen({ navigation }) {
   const { user }          = useAuth();
   const { t }             = useLanguage();
+  const { isDark }        = useAppTheme();
+  const s                 = useMemo(makeS, [isDark]);
   const [isim, setIsim]   = useState('');
   const [soyisim, setSoy] = useState('');
   const [prog, setProg]   = useState('');
@@ -53,7 +56,7 @@ export default function AddAthleteScreen({ navigation }) {
       style={s.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* ── Header ── */}
       <View style={s.header}>
@@ -147,6 +150,7 @@ export default function AddAthleteScreen({ navigation }) {
 }
 
 function Field({ icon, label, placeholder, value, onChangeText }) {
+  const f = makeF();
   return (
     <View style={f.wrapper}>
       <Text style={f.label}>{label}</Text>
@@ -163,7 +167,7 @@ function Field({ icon, label, placeholder, value, onChangeText }) {
     </View>
   );
 }
-const f = StyleSheet.create({
+const makeF = () => StyleSheet.create({
   wrapper:       { marginBottom: 16 },
   label:         { fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: 6, fontWeight: '600' },
   inputRow:      {
@@ -177,7 +181,7 @@ const f = StyleSheet.create({
   input:         { flex: 1, color: COLORS.text, fontSize: FONT.md },
 });
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root:   { flex: 1, backgroundColor: COLORS.bg },
   scroll: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 60 },
 

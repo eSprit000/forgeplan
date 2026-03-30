@@ -445,13 +445,14 @@ const programGetir = async (programId) => {
  * Koleksiyon: beslenmeProgramlari
  * ogunler: [{ ogunAdi, besinler: [{ isim, miktar, kalori }], not }]
  */
-const beslenmeProgramiOlustur = async (kocId, sporcuId, { programAdi, ogunler }) => {
+const beslenmeProgramiOlustur = async (kocId, sporcuId, { programAdi, ogunler, sure }) => {
   try {
     const ref = await addDoc(collection(db, 'beslenmeProgramlari'), {
       kocId,
       sporcuId,
       programAdi,
       ogunler,
+      sure: sure ?? '1ay',
       olusturmaTarihi: serverTimestamp(),
     });
     await updateDoc(doc(db, 'sporcular', sporcuId), { beslenmeProgramId: ref.id });
@@ -681,6 +682,56 @@ const tamamlananOgunleriGetir = async (sporcuId, beslenmeProgramId) => {
     throw error;
   }
 };
+/**
+ * Koççun sporcu slotını siler ve varsa bağlı kullanıcıyı koçtan ayırır.
+ * - sporcular/{sporcuId} dokümanı silinir (deleteDoc)
+ * - Eğer sporcu bağlı bir kullanıcı varsa (sporcuUid), o kullanıcının
+ *   kocId ve sporcuId alanları null yapılır.
+ */
+const sporcuSlotSil = async (sporcuId, sporcuUid) => {
+  try {
+    const { deleteDoc } = await import('firebase/firestore');
+    // Sporcu slotını sil
+    await deleteDoc(doc(db, 'sporcular', sporcuId));
+    // Bağlı kullanıcı varsa bağlantıyı kopar
+    if (sporcuUid) {
+      await setDoc(
+        doc(db, 'kullanicilar', sporcuUid),
+        { kocId: null, sporcuId: null },
+        { merge: true }
+      );
+    }
+  } catch (error) {
+    console.error('[firestoreService] sporcuSlotSil hatas\u0131:', error);
+    throw error;
+  }
+};
+
+/**
+ * Sporcu koçundan ayrılır:
+ * - kullanicilar/{uid}.kocId ve sporcuId null yapılır
+ * - sporcular/{sporcuId}.sporcuUid null yapılır
+ */
+const koctanAyril = async (uid, sporcuId) => {
+  try {
+    await setDoc(
+      doc(db, 'kullanicilar', uid),
+      { kocId: null, sporcuId: null },
+      { merge: true }
+    );
+    if (sporcuId) {
+      await setDoc(
+        doc(db, 'sporcular', sporcuId),
+        { sporcuUid: null },
+        { merge: true }
+      );
+    }
+  } catch (error) {
+    console.error('[firestoreService] koctanAyril hatas\u0131:', error);
+    throw error;
+  }
+};
+
 // ─── KULLANICI GÜNCELLEME ─────────────────────────────────────
 
 /**
@@ -691,10 +742,85 @@ const kullaniciGuncelle = async (kullaniciId, data) => {
   try {
     await setDoc(doc(db, 'kullanicilar', kullaniciId), data, { merge: true });
   } catch (error) {
-    console.error('[firestoreService] kullaniciGuncelle hatası:', error);
+    console.error('[firestoreService] kullaniciGuncelle hatas\u0131:', error);
     throw error;
   }
 };
+
+/**
+ * Kullan\u0131c\u0131n\u0131n t\u00fcm Firestore verilerini siler.
+ * (kullanicilar, sporcular, programlar, tamamlananGunler, beslenmeProgramlari)
+ */
+const kullaniciVerileriniSil = async (uid, sporcuId) => {
+  try {
+    // kullanicilar dok\u00fcman\u0131
+    await setDoc(doc(db, 'kullanicilar', uid), { silindi: true }, { merge: true });
+    // Sporcu slotu
+    if (sporcuId) {
+      await setDoc(doc(db, 'sporcular', sporcuId), { sporcuUid: null }, { merge: true });
+    }
+  } catch (error) {
+    console.error('[firestoreService] kullaniciVerileriniSil hatas\u0131:', error);
+    throw error;
+  }
+};
+// ─── VÜCUT ÖLÇÜMLERİ ────────────────────────────────────────
+
+/**
+ * Sporcu vücut ölçümü kaydeder.
+ * Koleksiyon: sporcuOlcumleri
+ */
+const olcumEkle = async (sporcuId, { kilo, yag, bel, gogus, bicep }) => {
+  try {
+    const ref = await addDoc(collection(db, 'sporcuOlcumleri'), {
+      sporcuId,
+      kilo:  kilo  ?? null,
+      yag:   yag   ?? null,
+      bel:   bel   ?? null,
+      gogus: gogus ?? null,
+      bicep: bicep ?? null,
+      tarih: serverTimestamp(),
+    });
+    return ref.id;
+  } catch (error) {
+    console.error('[firestoreService] olcumEkle hatası:', error);
+    throw error;
+  }
+};
+
+/**
+ * Sporcunun ölçüm geçmişini getirir (en yeni 30 kayıt).
+ */
+const olcumleriGetir = async (sporcuId) => {
+  try {
+    const q = query(
+      collection(db, 'sporcuOlcumleri'),
+      where('sporcuId', '==', sporcuId),
+    );
+    const snap = await getDocs(q);
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Sort client-side (avoids composite index requirement)
+    docs.sort((a, b) => (b.tarih?.seconds ?? 0) - (a.tarih?.seconds ?? 0));
+    return docs.slice(0, 30);
+  } catch (error) {
+    console.error('[firestoreService] olcumleriGetir hatası:', error);
+    return [];
+  }
+};
+
+/**
+ * Koç, sporcunun antrenman log kaydına yorum ekler.
+ * Koleksiyon: setLoglar
+ */
+const logYorumuEkle = async (logId, yorum) => {
+  try {
+    await updateDoc(doc(db, 'setLoglar', logId), { kocYorumu: yorum });
+  } catch (error) {
+    console.error('[firestoreService] logYorumuEkle hatası:', error);
+    throw error;
+  }
+};
+
 // ─── EXPORT ──────────────────────────────────────────────────
 
 export default {
@@ -702,6 +828,7 @@ export default {
   getKullanici,
   kullaniciOlustur,
   kullaniciGuncelle,
+  kullaniciVerileriniSil,
   getSporcular,
   // Davet (legacy)
   davetKoduOlustur,
@@ -709,6 +836,8 @@ export default {
   // Sporcular (yeni)
   sporcuEkle,
   kocSporculariniGetir,
+  sporcuSlotSil,
+  koctanAyril,
   sporcuKoduDogrula,
   beslenmeKoduDogrula,
   // Programlar (yeni)
@@ -740,4 +869,9 @@ export default {
   // Öğün Tamamlama
   ogunTamamla,
   tamamlananOgunleriGetir,
+  // Vücut Ölçümleri
+  olcumEkle,
+  olcumleriGetir,
+  // Koç Yorumu
+  logYorumuEkle,
 };

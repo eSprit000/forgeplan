@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert,
     Animated, Easing,
@@ -11,7 +12,9 @@ import {
     View,
 } from 'react-native';
 import AnimatedPressable from '../../components/AnimatedPressable';
+import PremiumGateModal from '../../components/PremiumGateModal';
 import { COLORS, FONT, RADIUS, SHADOW } from '../../constants/theme';
+import { useAppTheme } from '../../i18n/ThemeContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../navigation/AuthProvider';
 import firestoreService from '../../services/firestoreService';
@@ -33,8 +36,12 @@ const ia = StyleSheet.create({
 export default function CoachDashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const { t } = useLanguage();
+  const { isDark } = useAppTheme();
+  const s = useMemo(makeS, [isDark]);
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading]   = useState(true);
+  const [copiedCode, setCopiedCode] = useState(null);
+  const [gateVisible, setGateVisible] = useState(false);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
 
@@ -62,10 +69,16 @@ export default function CoachDashboardScreen({ navigation }) {
     return unsub;
   }, [navigation, load]);
 
+  const copyCode = async (kod) => {
+    await Clipboard.setStringAsync(kod);
+    setCopiedCode(kod);
+    setTimeout(() => setCopiedCode(null), 2500);
+  };
+
   const renderItem = ({ item, index }) => {
     const hasAntrenman = !!item.programId;
     const hasBeslenme  = !!item.beslenmeProgramId;
-    const delay = Math.min(index * 60, 300);
+    const isCopied = copiedCode === item.kod;
     return (
       <AnimatedPressable
         style={s.athleteCard}
@@ -84,9 +97,9 @@ export default function CoachDashboardScreen({ navigation }) {
               </View>
             )}
             {hasBeslenme && (
-              <View style={s.turBadgeBeslenme}>
+              <View style={[s.turBadge, s.turBadgeBeslenme]}>
                 <Ionicons name="nutrition-outline" size={10} color={COLORS.success} />
-                <Text style={s.turBadgeTextBeslenme}>{t('tabNutrition')}</Text>
+                <Text style={[s.turBadgeText, s.turBadgeTextBeslenme]}>{t('tabNutrition')}</Text>
               </View>
             )}
             {!hasAntrenman && !hasBeslenme && (
@@ -94,28 +107,50 @@ export default function CoachDashboardScreen({ navigation }) {
             )}
           </View>
         </View>
-        <View style={s.codeChip}>
-          <Text style={s.codeText}>{item.kod}</Text>
-        </View>
+        <TouchableOpacity
+          style={[s.codeChip, isCopied && s.codeChipCopied]}
+          onPress={() => copyCode(item.kod)}
+          activeOpacity={0.75}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={isCopied ? 'checkmark' : 'copy-outline'}
+            size={11}
+            color={isCopied ? COLORS.success : COLORS.accent}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[s.codeText, isCopied && { color: COLORS.success }]}>{item.kod}</Text>
+        </TouchableOpacity>
       </AnimatedPressable>
     );
   };
 
+  const workoutAssigned = athletes.filter((a) => !!a.programId).length;
+  const nutritionAssigned = athletes.filter((a) => !!a.beslenmeProgramId).length;
+
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* ── Header ── */}
       <Animated.View style={[s.header, {
         opacity: headerAnim,
         transform: [{ translateY: headerAnim.interpolate({ inputRange: [0,1], outputRange: [-12, 0] }) }],
       }]}>
-        <View>
-          <Text style={s.greeting}>{t('hello')},</Text>
-          <Text style={s.coachName}>{user.isim ?? t('roleCoach')} 👋</Text>
+        <View style={s.headerLeft}>
+          <View style={s.avatarCircle}>
+            <Text style={s.avatarLetter}>{(user.isim?.[0] ?? 'K').toUpperCase()}</Text>
+          </View>
+          <View>
+            <Text style={s.greeting}>{t('hello')} 👋</Text>
+            <Text style={s.coachName}>{user.isim ?? t('roleCoach')}</Text>
+            <Text style={s.dateLabel}>
+              {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </Text>
+          </View>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={s.signOutBtn}>
-          <Ionicons name="settings-outline" size={22} color={COLORS.textSecondary} />
+          <Ionicons name="settings-outline" size={20} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -123,6 +158,19 @@ export default function CoachDashboardScreen({ navigation }) {
       <View style={s.sectionRow}>
         <Text style={s.sectionTitle}>{t('myAthletes')}</Text>
         <Text style={s.sectionCount}>{athletes.length}</Text>
+      </View>
+
+      <View style={s.statsRow}>
+        <View style={s.statCard}>
+          <Ionicons name="barbell-outline" size={14} color={COLORS.accent} />
+          <Text style={s.statValue}>{workoutAssigned}</Text>
+          <Text style={s.statLabel}>{t('tabWorkout')}</Text>
+        </View>
+        <View style={s.statCard}>
+          <Ionicons name="nutrition-outline" size={14} color={COLORS.success} />
+          <Text style={s.statValue}>{nutritionAssigned}</Text>
+          <Text style={s.statLabel}>{t('tabNutrition')}</Text>
+        </View>
       </View>
 
       {/* ── List ── */}
@@ -149,25 +197,53 @@ export default function CoachDashboardScreen({ navigation }) {
       {/* ── FAB ── */}
       <AnimatedPressable
         style={s.fab}
-        onPress={() => navigation.navigate('AddAthlete')}
+        onPress={() => {
+          if (athletes.length >= 1) {
+            setGateVisible(true);
+          } else {
+            navigation.navigate('AddAthlete');
+          }
+        }}
         haptic="medium"
         scale={0.92}
       >
         <Ionicons name="add" size={30} color={COLORS.white} />
       </AnimatedPressable>
+
+      {/* ── Premium Gate ── */}
+      <PremiumGateModal
+        visible={gateVisible}
+        onClose={() => setGateVisible(false)}
+        onUpgrade={() => { setGateVisible(false); navigation.navigate('Premium'); }}
+        feature={{
+          icon: 'people-outline',
+          title: 'Sporcu Limiti',
+          desc: 'Ücretsiz planda en fazla 1 sporcu ekleyebilirsin. Sınırsız sporcu yönetimi için Coach paketine geçebilirsin.',
+          tier: 'Coach',
+        }}
+      />
     </View>
   );
 }
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg, paddingHorizontal: 20 },
 
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
-    paddingTop: 60, paddingBottom: 24,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 60, paddingBottom: 20,
   },
-  greeting:   { fontSize: FONT.md, color: COLORS.textSecondary },
-  coachName:  { fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  avatarCircle: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
+    ...SHADOW.accentGlow,
+  },
+  avatarLetter: { color: COLORS.white, fontSize: FONT.xl, fontWeight: '900' },
+  greeting:  { fontSize: FONT.sm, color: COLORS.accent, fontWeight: '700', letterSpacing: 0.3 },
+  coachName: { fontSize: FONT.xxl, fontWeight: '900', color: COLORS.text, lineHeight: 28 },
+  dateLabel: { fontSize: FONT.xs, color: COLORS.textMuted, marginTop: 2, textTransform: 'capitalize' },
   signOutBtn: { padding: 8 },
 
   sectionRow: {
@@ -180,6 +256,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2,
     borderRadius: RADIUS.full,
   },
+
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  statCard: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.md, paddingHorizontal: 12, paddingVertical: 10,
+  },
+  statValue: { fontSize: FONT.md, color: COLORS.text, fontWeight: '800' },
+  statLabel: { fontSize: FONT.xs, color: COLORS.textSecondary, fontWeight: '600' },
 
   athleteCard: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
@@ -202,13 +288,15 @@ const s = StyleSheet.create({
   turBadgeTextBeslenme: { color: COLORS.success },
   athleteProg: { fontSize: FONT.sm, color: COLORS.textSecondary, flex: 1 },
   codeChip: {
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.elevated, borderRadius: RADIUS.sm,
-    paddingHorizontal: 10, paddingVertical: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  codeChipBeslenme: { borderColor: COLORS.success + '55', backgroundColor: COLORS.success + '11' },
-  codeText:         { fontSize: FONT.xs, color: COLORS.accent, fontWeight: '700', letterSpacing: 1 },
-  codeTextBeslenme: { color: COLORS.success },
+  codeChipCopied: {
+    borderColor: COLORS.success + '66', backgroundColor: COLORS.success + '11',
+  },
+  codeText: { fontSize: FONT.xs, color: COLORS.accent, fontWeight: '700', letterSpacing: 1 },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyTitle: { fontSize: FONT.lg, fontWeight: '700', color: COLORS.textSecondary },

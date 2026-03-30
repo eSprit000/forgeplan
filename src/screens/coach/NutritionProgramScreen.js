@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator, Alert,
     KeyboardAvoidingView,
@@ -12,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import { COLORS, FONT, RADIUS, SHADOW } from '../../constants/theme';
+import { useAppTheme } from '../../i18n/ThemeContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../navigation/AuthProvider';
 import firestoreService from '../../services/firestoreService';
@@ -21,14 +22,17 @@ const newBesin  = () => ({ isim: '', miktar: '', kalori: '' });
 const newOgun   = (n) => ({ ogunAdi: `${n}. Öğün`, besinler: [newBesin()], not: '' });
 
 /* ─── SectionDivider ───────────────────────────────────────── */
-const SectionDivider = ({ label }) => (
+const SectionDivider = ({ label }) => {
+  const sd = makeSd();
+  return (
   <View style={sd.row}>
     <View style={sd.line} />
     <Text style={sd.label}>{label}</Text>
     <View style={sd.line} />
   </View>
-);
-const sd = StyleSheet.create({
+  );
+};
+const makeSd = () => StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', marginVertical: 10 },
   line:  { flex: 1, height: 1, backgroundColor: COLORS.border },
   label: { fontSize: FONT.xs, color: COLORS.textMuted, marginHorizontal: 10, fontWeight: '600' },
@@ -37,6 +41,7 @@ const sd = StyleSheet.create({
 /* ─── BesinRow ─────────────────────────────────────────────── */
 const BesinRow = ({ index, data, onChange, onDelete, canDelete }) => {
   const { t } = useLanguage();
+  const br = makeBr();
   return (
   <View style={br.row}>
     <View style={br.badge}>
@@ -84,7 +89,7 @@ const BesinRow = ({ index, data, onChange, onDelete, canDelete }) => {
   </View>
 );
 };
-const br = StyleSheet.create({
+const makeBr = () => StyleSheet.create({
   row:       { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   badge:     {
     width: 24, height: 24, borderRadius: 12,
@@ -115,6 +120,9 @@ export default function NutritionProgramScreen({ navigation, route }) {
   const { sporcu }      = route.params;
   const { user }        = useAuth();
   const { t }           = useLanguage();
+  const { isDark }      = useAppTheme();
+  const s               = useMemo(makeS, [isDark]);
+  const m               = useMemo(makeM, [isDark]);
   const [ogunler, setOgunler] = useState([newOgun(1)]);
   const [loading, setLoading] = useState(false);
   const [codeModal, setCodeModal] = useState(false);
@@ -199,7 +207,7 @@ export default function NutritionProgramScreen({ navigation, route }) {
       style={s.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* Header */}
       <View style={s.header}>
@@ -350,7 +358,7 @@ export default function NutritionProgramScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root:   { flex: 1, backgroundColor: COLORS.bg },
   scroll: { paddingHorizontal: 20, paddingBottom: 60 },
 
@@ -414,7 +422,7 @@ const s = StyleSheet.create({
   saveBtnText: { color: COLORS.white, fontSize: FONT.md, fontWeight: '700' },
 });
 
-const m = StyleSheet.create({
+const makeM = () => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: COLORS.overlay, justifyContent: 'flex-end' },
   sheet:   {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,

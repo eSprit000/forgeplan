@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   KeyboardAvoidingView,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import RPECalculatorModal from '../../components/RPECalculatorModal';
 import { COLORS, FONT, RADIUS, SHADOW } from '../../constants/theme';
+import { useAppTheme } from '../../i18n/ThemeContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../navigation/AuthProvider';
 import firestoreService from '../../services/firestoreService';
@@ -26,37 +27,25 @@ const newWeek   = (wNo) => ({ haftaNo: wNo, gunler: [newDay(1)] });
 const WEEK_OPTIONS = [1, 4, 6, 8, 12];
 
 /* ─── tiny sub-components ──────────────────────────────────── */
-const SectionDivider = ({ label }) => (
-  <View style={sd.row}>
-    <View style={sd.line} />
-    <Text style={sd.label}>{label}</Text>
-    <View style={sd.line} />
-  </View>
-);
-const sd = StyleSheet.create({
+const makeSd = () => StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', marginVertical: 10 },
   line:  { flex: 1, height: 1, backgroundColor: COLORS.border },
   label: { fontSize: FONT.xs, color: COLORS.textMuted, marginHorizontal: 10, fontWeight: '600' },
 });
+const SectionDivider = ({ label }) => {
+  const { isDark } = useAppTheme();
+  const sd = useMemo(makeSd, [isDark]);
+  return (
+    <View style={sd.row}>
+      <View style={sd.line} />
+      <Text style={sd.label}>{label}</Text>
+      <View style={sd.line} />
+    </View>
+  );
+};
 
 /* ─── SetRow ───────────────────────────────────────────────── */
-const SetRow = ({ setIndex, setData, onChange, onDelete, canDelete }) => (
-  <View style={sr.row}>
-    <View style={sr.badge}>
-      <Text style={sr.badgeText}>{setIndex + 1}</Text>
-    </View>
-    <MiniInput label="Tekrar" value={setData.tekrar} onChangeText={(v) => onChange('tekrar', v)} unit="tk" />
-    <MiniInput label="Kilo"   value={setData.hedefKilo} onChangeText={(v) => onChange('hedefKilo', v)} unit="kg" />
-    <MiniInput label="RPE"   value={setData.hedefRPE} onChangeText={(v) => onChange('hedefRPE', v)} unit="/10" />
-    <MiniInput label="RIR"   value={setData.rir ?? ''} onChangeText={(v) => onChange('rir', v)} unit="tk" />
-    {canDelete && (
-      <TouchableOpacity onPress={onDelete} style={sr.delBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Ionicons name="trash-outline" size={15} color={COLORS.textMuted} />
-      </TouchableOpacity>
-    )}
-  </View>
-);
-const sr = StyleSheet.create({
+const makeSr = () => StyleSheet.create({
   row:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   badge:   {
     width: 26, height: 26, borderRadius: 13,
@@ -66,24 +55,28 @@ const sr = StyleSheet.create({
   badgeText: { fontSize: FONT.xs, color: COLORS.textSecondary, fontWeight: '700' },
   delBtn:  { paddingHorizontal: 2 },
 });
-
-const MiniInput = ({ label, value, onChangeText, unit }) => (
-  <View style={mi.wrap}>
-    <Text style={mi.label}>{label}</Text>
-    <View style={mi.inputRow}>
-      <TextInput
-        style={mi.input}
-        value={String(value ?? '')}
-        onChangeText={onChangeText}
-        keyboardType="numeric"
-        placeholder="—"
-        placeholderTextColor={COLORS.textMuted}
-      />
-      <Text style={mi.unit}>{unit}</Text>
+const SetRow = ({ setIndex, setData, onChange, onDelete, canDelete }) => {
+  const { isDark } = useAppTheme();
+  const sr = useMemo(makeSr, [isDark]);
+  return (
+    <View style={sr.row}>
+      <View style={sr.badge}>
+        <Text style={sr.badgeText}>{setIndex + 1}</Text>
+      </View>
+      <MiniInput label="Tekrar" value={setData.tekrar} onChangeText={(v) => onChange('tekrar', v)} unit="tk" />
+      <MiniInput label="Kilo"   value={setData.hedefKilo} onChangeText={(v) => onChange('hedefKilo', v)} unit="kg" />
+      <MiniInput label="RPE"   value={setData.hedefRPE} onChangeText={(v) => onChange('hedefRPE', v)} unit="/10" />
+      <MiniInput label="RIR"   value={setData.rir ?? ''} onChangeText={(v) => onChange('rir', v)} unit="tk" />
+      {canDelete && (
+        <TouchableOpacity onPress={onDelete} style={sr.delBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="trash-outline" size={15} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
     </View>
-  </View>
-);
-const mi = StyleSheet.create({
+  );
+};
+
+const makeMi = () => StyleSheet.create({
   wrap:     { flex: 1, minWidth: 52 },
   label:    { fontSize: 10, color: COLORS.textMuted, marginBottom: 3, fontWeight: '600' },
   inputRow: {
@@ -95,9 +88,32 @@ const mi = StyleSheet.create({
   input:    { flex: 1, color: COLORS.text, fontSize: FONT.sm, padding: 4 },
   unit:     { fontSize: 10, color: COLORS.textMuted, marginLeft: 2 },
 });
+const MiniInput = ({ label, value, onChangeText, unit }) => {
+  const { isDark } = useAppTheme();
+  const mi = useMemo(makeMi, [isDark]);
+  return (
+    <View style={mi.wrap}>
+      <Text style={mi.label}>{label}</Text>
+      <View style={mi.inputRow}>
+        <TextInput
+          style={mi.input}
+          value={String(value ?? '')}
+          onChangeText={onChangeText}
+          keyboardType="numeric"
+          placeholder="—"
+          placeholderTextColor={COLORS.textMuted}
+        />
+        <Text style={mi.unit}>{unit}</Text>
+      </View>
+    </View>
+  );
+};
 
 /* ─── Main Screen ──────────────────────────────────────────── */
 export default function CreateProgramScreen({ navigation, route }) {
+  const { isDark } = useAppTheme();
+  const s = useMemo(makeS, [isDark]);
+  const m = useMemo(makeM, [isDark]);
   const { sporcu }                        = route.params;
   const { user }                          = useAuth();
   const { t }                             = useLanguage();
@@ -126,7 +142,7 @@ export default function CreateProgramScreen({ navigation, route }) {
   const toggleWeek = (wIdx) => {
     setExpandedWeeks((prev) => {
       const next = new Set(prev);
-      next.has(wIdx) ? next.delete(wIdx) : next.add(wIdx);
+      if (next.has(wIdx)) { next.delete(wIdx); } else { next.add(wIdx); }
       return next;
     });
   };
@@ -299,7 +315,7 @@ export default function CreateProgramScreen({ navigation, route }) {
   /* ─────────────────────── RENDER ──────────────────────────── */
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* Header */}
       <View style={s.header}>
@@ -512,7 +528,7 @@ export default function CreateProgramScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root:   { flex: 1, backgroundColor: COLORS.bg },
   scroll: { paddingHorizontal: 20, paddingBottom: 60 },
 
@@ -646,7 +662,7 @@ const s = StyleSheet.create({
   saveBtnText: { color: COLORS.white, fontSize: FONT.md, fontWeight: '700' },
 });
 
-const m = StyleSheet.create({
+const makeM = () => StyleSheet.create({
   overlay:  { flex: 1, backgroundColor: COLORS.overlay, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,

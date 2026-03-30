@@ -20,14 +20,14 @@ export const AuthProvider = ({ children }) => {
         const ref = doc(db, 'kullanicilar', fbUser.uid);
         const snap = await getDoc(ref);
         if (snap.exists()) {
-          setUser({ uid: fbUser.uid, email: fbUser.email, ...snap.data() });
+          setUser({ uid: fbUser.uid, email: fbUser.email, phoneNumber: fbUser.phoneNumber, ...snap.data() });
         } else {
           // No Firestore doc yet — user just registered, needs role selection
-          setUser({ uid: fbUser.uid, email: fbUser.email, rol: null, sporcuId: null, kocId: null });
+          setUser({ uid: fbUser.uid, email: fbUser.email, phoneNumber: fbUser.phoneNumber, rol: null, sporcuId: null, kocId: null });
         }
       } catch (e) {
         console.warn('[AuthProvider] Kullanıcı profili okunamadı:', e);
-        setUser({ uid: fbUser.uid, email: fbUser.email, rol: null, sporcuId: null, kocId: null });
+        setUser({ uid: fbUser.uid, email: fbUser.email, phoneNumber: fbUser.phoneNumber, rol: null, sporcuId: null, kocId: null });
       }
       setInitializing(false);
     });
@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }) => {
     if (!user) return;
     await setDoc(
       doc(db, 'kullanicilar', user.uid),
-      { id: user.uid, email: user.email || null, isim: user.isim || null, rol, kocId: null, sporcuId: null },
+      { id: user.uid, email: user.email || null, phoneNumber: user.phoneNumber || null, isim: user.isim || null, rol, kocId: null, sporcuId: null },
       { merge: true }
     );
     setUser((prev) => ({ ...prev, rol }));

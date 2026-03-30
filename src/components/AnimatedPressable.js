@@ -56,8 +56,9 @@ export default function AnimatedPressable({
   };
 
   return (
-    <Animated.View style={[animStyle, disabled && { opacity: 0.5 }, style]}>
+    <Animated.View style={animStyle}>
       <Pressable
+        style={[style, disabled && { opacity: 0.5 }]}
         onPressIn={() => { pressed.value = true; }}
         onPressOut={() => { pressed.value = false; }}
         onPress={() => {

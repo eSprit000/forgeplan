@@ -6,6 +6,7 @@ export { LANGUAGES };
 
 const STORAGE_KEY = '@forgeplan_language';
 const DEFAULT_LANG = 'tr';
+const SECONDARY_LANG = 'en';
 
 const LanguageContext = createContext({
   language: DEFAULT_LANG,
@@ -30,7 +31,11 @@ export const LanguageProvider = ({ children }) => {
   }, []);
 
   const t = useCallback(
-    (key) => TRANSLATIONS[language]?.[key] ?? TRANSLATIONS[DEFAULT_LANG]?.[key] ?? key,
+    (key) =>
+      TRANSLATIONS[language]?.[key]
+      ?? TRANSLATIONS[SECONDARY_LANG]?.[key]
+      ?? TRANSLATIONS[DEFAULT_LANG]?.[key]
+      ?? key,
     [language]
   );
 

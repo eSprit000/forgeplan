@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert,
   Animated, Easing,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Modal, Platform,
   ScrollView,
   StatusBar,
@@ -19,6 +20,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import RPECalculatorModal from '../../components/RPECalculatorModal';
 import { COLORS, FONT, RADIUS, SHADOW } from '../../constants/theme';
+import { useAppTheme } from '../../i18n/ThemeContext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { useAuth } from '../../navigation/AuthProvider';
 import firestoreService from '../../services/firestoreService';
@@ -33,6 +35,7 @@ const formatDate = (ts) => {
 /* ── ExerciseRow ──────────────────────────────────────────── */
 const ExerciseRow = ({ exc, index, ticked, onTick }) => {
   const { t } = useLanguage();
+  const er = makeEr();
   return (
   <View style={[er.wrap, ticked && er.wrapDone]}>
     <View style={er.nameRow}>
@@ -80,7 +83,7 @@ const ExerciseRow = ({ exc, index, ticked, onTick }) => {
   </View>
   );
 };
-const er = StyleSheet.create({
+const makeEr = () => StyleSheet.create({
   wrap:      { marginBottom: 12 },
   wrapDone:  { opacity: 0.6 },
   nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
@@ -108,6 +111,11 @@ const er = StyleSheet.create({
 export default function AthleteWorkoutScreen({ navigation }) {
   const { user, signOut, setBeslenmeLinked }  = useAuth();
   const { t } = useLanguage();
+  const { isDark } = useAppTheme();
+  const s     = useMemo(makeS,    [isDark]);
+  const mo    = useMemo(makeMo,   [isDark]);
+  const po    = useMemo(makePo,   [isDark]);
+  const olcS  = useMemo(makeOlcS, [isDark]);
   const [program, setProgram]     = useState(null);
   const [completed, setCompleted] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -153,6 +161,13 @@ export default function AthleteWorkoutScreen({ navigation }) {
   const [prHareket, setPrHareket] = useState('');
   const [prKg, setPrKg]           = useState('');
   const [prSaving, setPrSaving]   = useState(false);
+
+  // Vücut ölçüm tab
+  const [olcumler, setOlcumler]         = useState([]);
+  const [olcumLoading, setOlcumLoading] = useState(false);
+  const [olcumModal, setOlcumModal]     = useState(false);
+  const [olcumForm, setOlcumForm]       = useState({ kilo: '', yag: '', bel: '', gogus: '', bicep: '' });
+  const [olcumSaving, setOlcumSaving]   = useState(false);
 
   // Egzersiz tikleri: { [dayIndex]: Set<excIndex> }
   const [tickedExcs, setTickedExcs] = useState({});
@@ -222,6 +237,81 @@ export default function AthleteWorkoutScreen({ navigation }) {
   useEffect(() => {
     if (activeTab === 'pr') loadPrler();
   }, [activeTab, loadPrler]);
+
+  const loadOlcumler = useCallback(async () => {
+    if (!user.sporcuId) return;
+    try {
+      setOlcumLoading(true);
+      const data = await firestoreService.olcumleriGetir(user.sporcuId);
+      setOlcumler(data);
+    } catch (e) {
+      // silent
+    } finally {
+      setOlcumLoading(false);
+    }
+  }, [user.sporcuId]);
+
+  useEffect(() => {
+    if (activeTab === 'olcum') loadOlcumler();
+  }, [activeTab, loadOlcumler]);
+
+  const handleKaydetOlcum = async () => {
+    if (!user.sporcuId) {
+      Alert.alert('Uyarı', 'Ölçüm kaydedebilmek için bir koça bağlı olman gerekiyor.');
+      return;
+    }
+    const { kilo, yag, bel, gogus, bicep } = olcumForm;
+    if (!kilo && !yag && !bel && !gogus && !bicep) {
+      Alert.alert('Uyarı', 'En az bir ölçüm değeri girin.');
+      return;
+    }
+    setOlcumSaving(true);
+    try {
+      await firestoreService.olcumEkle(user.sporcuId, {
+        kilo:  parseFloat(kilo)  || null,
+        yag:   parseFloat(yag)   || null,
+        bel:   parseFloat(bel)   || null,
+        gogus: parseFloat(gogus) || null,
+        bicep: parseFloat(bicep) || null,
+      });
+      setOlcumModal(false);
+      setOlcumForm({ kilo: '', yag: '', bel: '', gogus: '', bicep: '' });
+      loadOlcumler();
+    } catch (e) {
+      Alert.alert(t('error'), e.message);
+    } finally {
+      setOlcumSaving(false);
+    }
+  };
+
+  const handleShareOlcum = async (olcum) => {
+    const items = [
+      olcum.kilo != null ? `${t('weightLabel')}: ${olcum.kilo} kg` : null,
+      olcum.yag != null ? `${t('bodyFatLabel')}: ${olcum.yag}%` : null,
+      olcum.bel != null ? `${t('waistLabel')}: ${olcum.bel} cm` : null,
+      olcum.gogus != null ? `${t('chestLabel')}: ${olcum.gogus} cm` : null,
+      olcum.bicep != null ? `${t('bicepLabel')}: ${olcum.bicep} cm` : null,
+    ].filter(Boolean);
+
+    if (items.length === 0) {
+      Alert.alert(t('warning'), t('noMeasurementToShare'));
+      return;
+    }
+
+    const message = `${t('measurementShareTitle')}\n\n${items.join('\n')}`;
+    const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
+
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert(t('warning'), t('whatsAppNotInstalled'));
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(t('error'), t('whatsAppShareError'));
+    }
+  };
 
   const handleBeslenmeKod = async () => {
     const trimmed = beslenmeKod.trim().toUpperCase();
@@ -484,19 +574,26 @@ export default function AthleteWorkoutScreen({ navigation }) {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={COLORS.bg} />
 
       {/* ── Header ── */}
       <View style={s.header}>
-        <View style={{ flex: 1, overflow: 'hidden' }}>
+        <View style={s.headerLeft}>
+          <View style={s.avatarCircle}>
+            <Text style={s.avatarLetter}>{(user.isim?.[0] ?? 'S').toUpperCase()}</Text>
+          </View>
+          <View style={{ flex: 1, overflow: 'hidden' }}>
           <Text style={s.hello} numberOfLines={1}>{t('hello')} 💪</Text>
           <Text style={s.progName} numberOfLines={1} ellipsizeMode="tail">
             {activeTab === 'beslenme'
               ? (beslenmeProgram?.programAdi ?? t('myNutrition'))
               : activeTab === 'pr'
               ? t('myPRs')
+              : activeTab === 'olcum'
+              ? t('measurementsTitle')
               : (program?.programAdi ?? t('myWorkout'))}
           </Text>
+          </View>
         </View>
         {activeTab === 'antrenman' && program && (
           <TouchableOpacity
@@ -518,6 +615,16 @@ export default function AthleteWorkoutScreen({ navigation }) {
             <Text style={s.viewProgBtnText}>{t('addPR')}</Text>
           </TouchableOpacity>
         )}
+        {activeTab === 'olcum' && (
+          <TouchableOpacity
+            style={s.viewProgBtn}
+            onPress={() => setOlcumModal(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={15} color={'#7C6EFA'} />
+            <Text style={[s.viewProgBtnText, { color: '#7C6EFA' }]}>{t('addMeasurement')}</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={s.rpeCalcBtn}
           onPress={() => setRpeCalcModal(true)}
@@ -533,6 +640,15 @@ export default function AthleteWorkoutScreen({ navigation }) {
             activeOpacity={0.8}
           >
             <Ionicons name="share-outline" size={18} color={COLORS.success} />
+          </TouchableOpacity>
+        )}
+        {activeTab === 'olcum' && olcumler.length > 0 && (
+          <TouchableOpacity
+            style={s.shareBtn}
+            onPress={() => handleShareOlcum(olcumler[0])}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="logo-whatsapp" size={18} color={COLORS.success} />
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={s.signOutIconBtn}>
@@ -589,6 +705,17 @@ export default function AthleteWorkoutScreen({ navigation }) {
             {t('tabPR')}
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.tabBtn, activeTab === 'olcum' && s.tabBtnActiveOlcum]}
+          onPress={() => setActiveTab('olcum')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="body-outline" size={14}
+            color={activeTab === 'olcum' ? '#7C6EFA' : COLORS.textMuted} />
+          <Text style={[s.tabBtnText, activeTab === 'olcum' && s.tabBtnTextOlcum]}>
+            {t('tabMeasurement')}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Days list ── */}
@@ -597,6 +724,36 @@ export default function AthleteWorkoutScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         {/* ─ Antrenman Tab ─ */}
+        {activeTab === 'antrenman' && program && (() => {
+          const todayD = new Date();
+          const last7 = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(todayD); d.setDate(todayD.getDate() - 6 + i); return d;
+          });
+          const doneSet = new Set(completed.map((c) => {
+            if (!c.tarih) return '';
+            const d = c.tarih.toDate ? c.tarih.toDate() : new Date(c.tarih);
+            return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+          }));
+          const DAY_TR = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+          const todayKey = `${todayD.getFullYear()}-${todayD.getMonth()}-${todayD.getDate()}`;
+          return (
+            <View style={s.heatRow}>
+              {last7.map((d, i) => {
+                const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                const done = doneSet.has(key);
+                const isToday = key === todayKey;
+                return (
+                  <View key={i} style={s.heatCell}>
+                    <View style={[s.heatDot, done && s.heatDotDone, isToday && !done && s.heatDotToday]} />
+                    <Text style={[s.heatLabel, done && { color: COLORS.success }]}>
+                      {DAY_TR[d.getDay() === 0 ? 6 : d.getDay() - 1]}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })()}
         {activeTab === 'antrenman' && !program && (
           <View style={s.emptyTabWrap}>
             <Ionicons name="hourglass-outline" size={48} color={COLORS.textMuted} />
@@ -698,6 +855,27 @@ export default function AthleteWorkoutScreen({ navigation }) {
             <Text style={s.emptyDesc}>{t('noNutritionDesc')}</Text>
           </View>
         )}
+        {activeTab === 'beslenme' && beslenmeProgram && (() => {
+          const SURE_COLORS = { '1ay': '#3FB950', '2ay': '#FF6B35', '3ay': '#7C6EFA' };
+          const SURE_LABELS = { '1ay': '1 Aylık', '2ay': '2 Aylık', '3ay': '3 Aylık' };
+          const sureKey = beslenmeProgram.sure ?? '1ay';
+          const sureColor = SURE_COLORS[sureKey] ?? COLORS.success;
+          const sureLabel = SURE_LABELS[sureKey] ?? '1 Aylık';
+          return (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6,
+                backgroundColor: sureColor + '18', borderRadius: RADIUS.md,
+                borderWidth: 1, borderColor: sureColor + '44',
+                paddingHorizontal: 14, paddingVertical: 8, marginBottom: 14 }}>
+                <Ionicons name="calendar-outline" size={15} color={sureColor} />
+                <Text style={{ fontSize: FONT.sm, fontWeight: '700', color: sureColor }}>{sureLabel} Program</Text>
+                <View style={{ flex:1 }} />
+                <Ionicons name="restaurant-outline" size={13} color={sureColor} />
+                <Text style={{ fontSize: FONT.xs, color: sureColor, fontWeight: '600' }}>{beslenmeProgram.ogunler.length} öğün/gün</Text>
+              </View>
+            </>
+          );
+        })()}
         {activeTab === 'beslenme' && beslenmeProgram && beslenmeProgram.ogunler?.map((ogun, oIdx) => {
           const toplamKcal = ogun.besinler?.reduce((acc, b) => acc + (parseInt(b.kalori) || 0), 0) ?? 0;
           return (
@@ -788,7 +966,106 @@ export default function AthleteWorkoutScreen({ navigation }) {
             </View>
           </View>
         ))}
+
+        {/* ─ Ölçüm Tab ─ */}
+        {activeTab === 'olcum' && olcumLoading && (
+          <ActivityIndicator color={'#7C6EFA'} style={{ marginTop: 40 }} />
+        )}
+        {activeTab === 'olcum' && !olcumLoading && olcumler.length === 0 && (
+          <View style={s.emptyTabWrap}>
+            <Ionicons name="body-outline" size={52} color={COLORS.textMuted} />
+            <Text style={s.emptyTitle}>{t('noMeasurement')}</Text>
+            <Text style={s.emptyDesc}>{t('noMeasurementDesc')}</Text>
+          </View>
+        )}
+        {activeTab === 'olcum' && !olcumLoading && olcumler.map((olcum, oIdx) => {
+          const tarihStr = olcum.tarih?.toDate
+            ? olcum.tarih.toDate().toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '—';
+          const FIELDS = [
+            { key: 'kilo',  label: 'Kilo',   unit: 'kg', color: COLORS.accent },
+            { key: 'yag',   label: 'Yağ %',  unit: '%',  color: '#7C6EFA' },
+            { key: 'bel',   label: 'Bel',    unit: 'cm', color: COLORS.warning },
+            { key: 'gogus', label: 'Göğüs', unit: 'cm', color: COLORS.success },
+            { key: 'bicep', label: 'Bicep',  unit: 'cm', color: '#FF6B35' },
+          ];
+          const filled = FIELDS.filter((f) => olcum[f.key] != null);
+          if (filled.length === 0) return null;
+          return (
+            <View key={olcum.id ?? oIdx} style={s.olcumCard}>
+              <View style={s.olcumCardHeader}>
+                <View style={s.olcumBadge}>
+                  <Ionicons name="body-outline" size={13} color={COLORS.white} />
+                </View>
+                <Text style={s.olcumDate}>{tarihStr}</Text>
+                {oIdx === 0 && (
+                  <View style={s.olcumLatestChip}>
+                    <Text style={s.olcumLatestText}>{t('latestRecord')}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={s.olcumChips}>
+                {filled.map((f) => (
+                  <View key={f.key} style={[s.olcumChip, { borderColor: f.color + '55', backgroundColor: f.color + '18' }]}>
+                    <Text style={[s.olcumChipVal, { color: f.color }]}>{olcum[f.key]}{f.unit}</Text>
+                    <Text style={s.olcumChipLabel}>{f.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          );
+        })}
       </ScrollView>
+
+      {/* ── Ölçüm Modal ── */}
+      <Modal visible={olcumModal} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={mo.overlay}>
+              <TouchableWithoutFeedback>
+                <View style={mo.sheet}>
+                  <Text style={mo.title}>{t('addMeasurement')} 📏</Text>
+                  <Text style={mo.desc}>{t('measurementEmptyHint')}</Text>
+                  <View style={olcS.grid}>
+                    {[
+                      { key: 'kilo',  label: t('weightLabel'),   color: COLORS.accent },
+                      { key: 'yag',   label: t('bodyFatLabel'),  color: '#7C6EFA' },
+                      { key: 'bel',   label: t('waistLabel'),    color: COLORS.warning },
+                      { key: 'gogus', label: t('chestLabel'),    color: COLORS.success },
+                      { key: 'bicep', label: t('bicepLabel'),    color: '#FF6B35' },
+                    ].map((f) => (
+                      <View key={f.key} style={olcS.field}>
+                        <Text style={[olcS.fieldLabel, { color: f.color }]}>{f.label}</Text>
+                        <TextInput
+                          style={[olcS.fieldInput, { borderColor: olcumForm[f.key] ? f.color : COLORS.border }]}
+                          value={olcumForm[f.key]}
+                          onChangeText={(v) => setOlcumForm((prev) => ({ ...prev, [f.key]: v }))}
+                          keyboardType="decimal-pad"
+                          placeholder="—"
+                          placeholderTextColor={COLORS.textMuted}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={[mo.saveBtn, { backgroundColor: '#7C6EFA' }, olcumSaving && mo.saveBtnDisabled]}
+                    onPress={handleKaydetOlcum}
+                    disabled={olcumSaving}
+                    activeOpacity={0.85}
+                  >
+                    {olcumSaving
+                      ? <ActivityIndicator color={COLORS.white} size="small" />
+                      : <Text style={mo.saveBtnText}>{t('save')}</Text>}
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { setOlcumModal(false); Keyboard.dismiss(); }} style={mo.cancelBtn}>
+                    <Text style={mo.cancelText}>{t('cancel')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ── Beslenme Kod Modal ── */}
       <Modal visible={beslenmeKodModal} transparent animationType="slide">
@@ -929,13 +1206,13 @@ export default function AthleteWorkoutScreen({ navigation }) {
         <View style={po.overlay}>
           <View style={po.sheet}>
             <View style={po.header}>
-              <Text style={po.title}>{program.programAdi}</Text>
+              <Text style={po.title}>{program?.programAdi}</Text>
               <TouchableOpacity onPress={() => setProgModal(false)} style={po.closeBtn}>
                 <Ionicons name="close" size={22} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {program.gunler?.map((gun, dIdx) => (
+              {program?.gunler?.map((gun, dIdx) => (
                 <View key={dIdx} style={po.dayCard}>
                   <View style={po.dayHeader}>
                     <View style={po.dayBadge}>
@@ -1062,7 +1339,7 @@ export default function AthleteWorkoutScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = () => StyleSheet.create({
   root:       { flex: 1, backgroundColor: COLORS.bg },
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
   emptyTitle: { fontSize: FONT.lg, fontWeight: '700', color: COLORS.textSecondary },
@@ -1128,16 +1405,28 @@ const s = StyleSheet.create({
   ogunNotText: { flex: 1, fontSize: FONT.xs, color: COLORS.textSecondary, fontStyle: 'italic', lineHeight: 16 },
 
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, gap: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 60, paddingBottom: 12, paddingHorizontal: 20, gap: 8,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, overflow: 'hidden' },
+  avatarCircle: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#58A6FF',
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+    shadowColor: '#58A6FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  avatarLetter: { color: COLORS.white, fontSize: FONT.lg, fontWeight: '900' },
   hello: {
-    fontSize: FONT.xs,
-    color: COLORS.textMuted,
+    fontSize: FONT.sm,
+    color: '#58A6FF',
     fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 2,
+    letterSpacing: 0.3,
+    marginBottom: 1,
   },
   progName: {
     fontSize: FONT.xl,
@@ -1234,9 +1523,44 @@ const s = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
   },
   prBadgeText: { fontSize: 10, color: COLORS.warning, fontWeight: '700' },
+
+  // Haftalık aktivite heatmap
+  heatRow:     { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16,
+                 backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: 14,
+                 borderWidth: 1, borderColor: COLORS.border },
+  heatCell:    { alignItems: 'center', gap: 5 },
+  heatDot:     { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.elevated,
+                 borderWidth: 1, borderColor: COLORS.border },
+  heatDotDone: { backgroundColor: COLORS.success, borderColor: COLORS.success },
+  heatDotToday:{ borderColor: COLORS.accent, borderWidth: 2 },
+  heatLabel:   { fontSize: 10, color: COLORS.textMuted, fontWeight: '600' },
+
+  // Ölçüm cards
+  olcumCard:       {
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: '#7C6EFA44', ...SHADOW.small,
+  },
+  olcumCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  olcumBadge:      {
+    width: 28, height: 28, borderRadius: 14, backgroundColor: '#7C6EFA',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  olcumDate:       { flex: 1, fontSize: FONT.sm, fontWeight: '700', color: COLORS.text },
+  olcumLatestChip: { backgroundColor: '#7C6EFA22', borderRadius: RADIUS.full,
+                     paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: '#7C6EFA55' },
+  olcumLatestText: { fontSize: 10, color: '#7C6EFA', fontWeight: '700' },
+  olcumChips:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  olcumChip:       { borderRadius: RADIUS.md, borderWidth: 1,
+                     paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', minWidth: 72 },
+  olcumChipVal:    { fontSize: FONT.md, fontWeight: '800' },
+  olcumChipLabel:  { fontSize: 10, color: COLORS.textMuted, fontWeight: '600', marginTop: 2 },
+
+  // Tab olcum
+  tabBtnActiveOlcum: { backgroundColor: '#7C6EFA22', borderBottomWidth: 2, borderBottomColor: '#7C6EFA' },
+  tabBtnTextOlcum:   { color: '#7C6EFA' },
 });
 
-const mo = StyleSheet.create({
+const makeMo = () => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: COLORS.overlay, justifyContent: 'flex-end' },
   sheet:   {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
@@ -1280,7 +1604,7 @@ const mo = StyleSheet.create({
 });
 
 /* ── Program Overview Modal styles ── */
-const po = StyleSheet.create({
+const makePo = () => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: COLORS.overlay, justifyContent: 'flex-end' },
   sheet:   {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
@@ -1306,4 +1630,15 @@ const po = StyleSheet.create({
   setHead:      { flex: 1, fontSize: 10, color: COLORS.textMuted, fontWeight: '700', textAlign: 'center' },
   setRow:       { flexDirection: 'row', paddingVertical: 4, borderTopWidth: 1, borderTopColor: COLORS.border },
   setCell:      { flex: 1, fontSize: FONT.sm, color: COLORS.text, textAlign: 'center' },
+});
+/* ── Ölçüm Modal Styles ─────────────────────────────────────── */
+const makeOlcS = () => StyleSheet.create({
+  grid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  field:      { width: '47%' },
+  fieldLabel: { fontSize: FONT.xs, fontWeight: '700', marginBottom: 5 },
+  fieldInput: {
+    backgroundColor: COLORS.elevated, borderRadius: RADIUS.md, borderWidth: 1.5,
+    paddingHorizontal: 12, paddingVertical: 10,
+    color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center',
+  },
 });
